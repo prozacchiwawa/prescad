@@ -6,29 +6,32 @@ def replace_name_token(t,params_dict):
     else:
         return t
 
-token_re = re.compile('|'.join([
-    r'(?P<ident>[a-zA-Z_][a-zA-Z0-9_]*)',
-    r'(?P<float>[-+]?(\d+(\.\d*)?|\.\d+)([eE][-+]?\d+)?)',
-    r'(?P<int>[-+]?(0[xX][\dA-Fa-f]+|0[0-7]*|\d+))',
-    r'(?P<op>[-+\*/=!%\^&\(\)\[\]\{\}:;<>,\.\#\$\@\?]+)',
-    r'(?P<ws>[ \t\r\n]+)']))
+token_re_list = [
+    ('int', r'(?P<int>[-+]?(0[xX][\dA-Fa-f]+|0[0-7]*|\d+))'),
+    ('float', r'(?P<float>[-+]?(\d+(\.\d*)?|\.\d+)([eE][-+]?\d+)?)'),
+    ('ident', r'(?P<ident>[a-zA-Z_][a-zA-Z0-9_]*)'),
+    ('op', r'(?P<op>[-+\*/=!%\^&\(\)\[\]\{\}:;<>,\.\#\$\@\?]+)'),
+    ('ws', r'(?P<ws>[ \t\r\n]+)')
+]
 
-def tokens_of(line):
-    patterns = ['ident', 'float', 'int', 'op', 'ws']
-    for t in re.finditer(token_re, line):
-        got_tokens = []
-        for p in patterns:
-            if t.group(p) > 0:
-                tok = str(t.group(p))
-                got_tokens += [tok]
+token_re = dict([(x[0], re.compile(x[1])) for x in token_re_list])
+
+def tokens_of(lineno, line):
+    endpos = 0
+    while endpos < len(line):
+        for p,re in token_re.iteritems():
+	    m = re.match(line, endpos)
+	    if m:
+                tok = str(m.group(p))
+                endpos = m.end(p)
                 yield tok
                 break
         else:
-            raise Exception('Unmatched string after %s' % (' '.join(got_tokens)))
+            raise Exception('Unmatched string after %s on line %d' % (line[:endpos], lineno))
 
-def replace_params(nextline, parameters):
+def replace_params(lineno, nextline, parameters):
     params_dict = dict([(newparam, j) for j,newparam in enumerate(parameters)])
-    return ''.join([replace_name_token(t, params_dict) for t in tokens_of(nextline)])
+    return ''.join([replace_name_token(t, params_dict) for t in tokens_of(lineno, nextline)])
 
 def prescad(prefile):
     splitpoint = prefile.index('!PRESCAD!')
@@ -79,11 +82,11 @@ def prescad(prefile):
         if strings != '':
             strings += ';'
 
-        nextline = replace_params(right_lines[i], parameters_take[i])
+        nextline = replace_params(i+1, right_lines[i], parameters_take[i])
 
         r.append('module prescadfunc' + str(i) + '() prescadfunc' + str(i+1) + '() {' + strings + nextline + '}')
 
-    nextline = replace_params(right_lines[-1], parameters_take[-1])
+    nextline = replace_params(len(right_lines), right_lines[-1], parameters_take[-1])
 
     r.append('module prescadfunc' + str(len(right_lines) - 1) + '() ' + nextline)
     r.append('prescadfunc0();')
