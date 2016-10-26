@@ -1,3 +1,34 @@
+import re
+
+def replace_name_token(t,params_dict):
+    if t in params_dict:
+        return 'children(%s)' % params_dict[t]
+    else:
+        return t
+
+token_re = re.compile('|'.join([
+    r'(?P<ident>[a-zA-Z_][a-zA-Z0-9_]*)',
+    r'(?P<float>[-+]?(\d+(\.\d*)?|\.\d+)([eE][-+]?\d+)?)',
+    r'(?P<int>[-+]?(0[xX][\dA-Fa-f]+|0[0-7]*|\d+))',
+    r'(?P<op>[-+\*/=!%\^&\(\)\[\]\{\}:;<>,\.\#\$\@\?]+)',
+    r'(?P<ws>[ \t\r\n]+)']))
+
+def tokens_of(line):
+    patterns = ['ident', 'float', 'int', 'op', 'ws']
+    for t in re.finditer(token_re, line):
+        got_tokens = []
+        for p in patterns:
+            if t.group(p) > 0:
+                tok = str(t.group(p))
+                got_tokens += [tok]
+                yield tok
+                break
+        else:
+            raise Exception('Unmatched string after %s' % (' '.join(got_tokens)))
+
+def replace_params(nextline, parameters):
+    params_dict = dict([(newparam, j) for j,newparam in enumerate(parameters)])
+    return ''.join([replace_name_token(t, params_dict) for t in tokens_of(nextline)])
 
 def prescad(prefile):
     splitpoint = prefile.index('!PRESCAD!')
@@ -47,13 +78,13 @@ def prescad(prefile):
         strings = ';'.join(['children(' + str(parameters_take[i].index(x)) + ')' for x in parameters_take[i+1][:-1]])
         if strings != '':
             strings += ';'
-        nextline = right_lines[i]
-        for j, newparam in enumerate(parameters_take[i]):
-            nextline = nextline.replace(newparam, 'children(' + str(j) + ')')
+
+        nextline = replace_params(right_lines[i], parameters_take[i])
+
         r.append('module prescadfunc' + str(i) + '() prescadfunc' + str(i+1) + '() {' + strings + nextline + '}')
-    nextline = right_lines[-1]
-    for j, newparam in enumerate(parameters_take[-1]):
-        nextline = nextline.replace(newparam, 'children(' + str(j) + ')')
+
+    nextline = replace_params(right_lines[-1], parameters_take[-1])
+
     r.append('module prescadfunc' + str(len(right_lines) - 1) + '() ' + nextline)
     r.append('prescadfunc0();')
     r.append('')
